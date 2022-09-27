@@ -89,7 +89,7 @@ class MultiheadAttention(nn.Module):
         self.attention_quant = None
         if self.self_attention:
             # self.qkv_proj = Linear(embed_dim, 3*embed_dim, bias=bias)
-            self.qkv_proj = QuantLinear(embed_dim, 3 * embed_dim, bias=bias, special=True)
+            self.qkv_proj = QuantLinear(embed_dim, 3 * embed_dim, bias=bias)
 
         elif self.encoder_decoder_attention and self.is_decoder:
             self.k_proj = QuantLinear(
@@ -101,10 +101,10 @@ class MultiheadAttention(nn.Module):
             self.q_proj = QuantLinear(embed_dim, embed_dim, bias=bias)
 
         self.out_proj = QuantLinear(embed_dim, embed_dim, bias=bias)
-        self.probs_quant = TensorQuantizer(relu_quant_config, special=True)
-        self.q_quant = TensorQuantizer(act_quant_config, special=True)
-        self.k_quant = TensorQuantizer(act_quant_config, special=True)
-        self.v_quant = TensorQuantizer(act_quant_config, special=True)
+        self.probs_quant = TensorQuantizer(relu_quant_config)
+        self.q_quant = TensorQuantizer(act_quant_config)
+        self.k_quant = TensorQuantizer(act_quant_config)
+        self.v_quant = TensorQuantizer(act_quant_config)
 
         if add_bias_kv:
             self.bias_k = Parameter(torch.Tensor(1, 1, embed_dim))
@@ -718,14 +718,12 @@ class TransformerDecoderLayer(TransformerDecoderLayerBase):
 
         self.fc1 = QuantLinear(
             self.embed_dim,
-            config.intermediate_size,
-            special=True,
+            config.intermediate_size
         )
         self.fc2 = QuantLinear(
             config.intermediate_size,
             self.embed_dim,
-            pre_activation=config.activation_fn,
-            special=True,
+            pre_activation=config.activation_fn
         )
 
         self.final_layer_norm = LayerNorm(self.embed_dim)
@@ -1020,7 +1018,7 @@ class TransformerEmbeddingLayer(TransformerEmbeddingLayerBase):
             )
         self.embedding_dim = config.embedding_dim
         self.dropout = Dropout(config.dropout)
-        self.emb_quant = TensorQuantizer(weight_quant_config, is_embed=True, hz=512, special="weight")
+        self.emb_quant = TensorQuantizer(weight_quant_config, special="weight")
         if config.layernorm_embedding:
             self.layernorm_embedding = LayerNorm(config.embedding_dim)
         else:

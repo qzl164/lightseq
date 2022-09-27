@@ -82,9 +82,7 @@ class TensorQuantizer(nn.Module):
         if_quant=False,
         if_clip=False,
         if_calib=False,
-        is_embed=False,
-        hz=None,
-        special=False,
+        special=None,
     ):
         """Initialize quantizer and set up required variables"""
         super(TensorQuantizer, self).__init__()
@@ -102,9 +100,7 @@ class TensorQuantizer(nn.Module):
         self._if_quant = if_quant
         self._if_clip = False
         self._if_calib = if_calib
-        self.fab = (1.3, 1.2)
-        self.fa_t = 0.3
-        self.is_embed = is_embed
+
         self.special = special
 
         if quant_desc.amax is not None:
@@ -112,8 +108,8 @@ class TensorQuantizer(nn.Module):
 
         # Clip module consumes a lot of memory, so only create it if learn_amax is True
         init_amax = quant_desc.amax if quant_desc.amax is not None else 1.0
-        self.is_weight = True if init_amax == 1.0 else False
-        self.clip = Clip(init_amax, learn_max=quant_desc.learn_amax, is_embed=is_embed, hz=hz)
+
+        self.clip = Clip(init_amax, learn_max=quant_desc.learn_amax)
         # It makes more sense to enable clip stage (which learns amax) if learn_amax is true
         self.enable_clip()
 
@@ -346,14 +342,7 @@ class TensorQuantizer(nn.Module):
         """Quantized forward pass."""
         inputs = self.clip(inputs)
 
-        # amax = self.clip.clip_value_maxs if self.is_embed else self.clip.clip_value_max
         amax = self.clip.clip_value_max
-
-        # factor = 0.9999**(self.train_step/0.9999)
-        # # factor = 0.999**(self.train_step/0.999)
-        # a = self.fa_t * factor
-        # fa, fb = 1 + a, a * 4
-        
         self.train_step += 1
 
         if self._fake_quant:
@@ -366,9 +355,6 @@ class TensorQuantizer(nn.Module):
                     self._narrow_range, 
                     self.training,
                     self.smooth_avg,
-                    # self.fab,
-                    (1, 1),
-                    self.is_weight,
                     self.special,
                 )
             else:
@@ -404,11 +390,6 @@ class TensorQuantizer(nn.Module):
                 raise RuntimeError("Calibrator was not created.")
             # Shape is only know when it sees the first tensor
             self._calibrator.collect(inputs)
-
-        # if self._if_clip:
-        #     if not self._learn_amax:
-        #         raise RuntimeError("Clip without learning amax is not implemented.")
-        #     outputs = self.clip(inputs)
 
         if self._if_quant:
             outputs = self._quant_forward(inputs)

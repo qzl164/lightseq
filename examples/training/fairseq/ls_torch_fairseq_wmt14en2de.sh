@@ -28,5 +28,3 @@ lightseq-train /tmp/wmt14_en_de/ \
     --fp16 \
     --use-torch-layer \
     --keep-last-epochs 1
-    # --find-unused-parameters \
-

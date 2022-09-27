@@ -32,11 +32,6 @@ MAX_SEQ_LENGTH = 300
 logger = logging.getLogger(__name__)
 
 
-def enable_int5(m):
-    if isinstance(m, TensorQuantizer):
-        m.num_bits = 5.0
-
-
 def enable_fp16(m):
     if isinstance(m, TensorQuantizer):
         m.disable()
@@ -44,25 +39,20 @@ def enable_fp16(m):
         m.disable_calib()
 
 
-def enable_int6(m):
-    if isinstance(m, TensorQuantizer):
-        m.num_bits = 6.0
-
-
 def enable_int4(m):
     if isinstance(m, TensorQuantizer):
         m.enable()
         m.enable_quant()
         m.disable_calib()
+        m.num_bits = 4.0
+
+
+def enable_int4_only_weight(m):
+    if isinstance(m, TensorQuantizer):
+        m.enable()
+        m.enable_quant()
+        m.disable_calib()
         m.num_bits = 4.0 if m.special == "weight" else 8.0
-
-
-enable_bits = {
-    4: enable_int4,
-    5: enable_int5,
-    6: enable_int6,
-    16: enable_fp16,
-}
 
 
 @register_model("ls_transformer")
@@ -168,18 +158,15 @@ class LSTransformerModel(FairseqEncoderDecoderModel):
                             help='enable quantization')
         parser.add_argument('--quant-mode', type=str,  default="qat", choices=["qat", "ptq"],
                             help='quantization mode')
-        parser.add_argument('--faa', type=float, metavar='D', default=1.3,
-                            help='scalar quantization noise and scalar quantization at training time')
-        parser.add_argument('--fbb', type=float, metavar='D', default=1.2,
-                            help='scalar quantization noise and scalar quantization at training time')
+        # args for step avg clip and pseudo-distillation
         parser.add_argument('--quant-bits', type=float, metavar='D', default=8,
                             help='quantization noise and scalar quantization at training time')
-        parser.add_argument('--smooth-avg-update', type=float, metavar='D', default=1000,
+        parser.add_argument('--smooth-avg-update', type=float, metavar='D', default=200,
                             help='smooth avg')
         parser.add_argument('--n-gpus-intk', type=float, metavar='D', default=-1,
                             help='number gpus')
-        parser.add_argument('--n-gpus-intwhat', type=float, metavar='D', default=5,
-                            help='num_bits')
+        parser.add_argument('--only-weight-quant', default=False, action='store_true',
+                            help='only enable weight quantization')
         # args for Fully Sharded Data Parallel (FSDP) training
         parser.add_argument(
             '--min-params-to-wrap', type=int, metavar='D', default=DEFAULT_MIN_PARAMS_TO_WRAP,
@@ -227,16 +214,13 @@ class LSTransformerModel(FairseqEncoderDecoderModel):
         decoder = cls.build_decoder(args, tgt_dict, decoder_embed_tokens)
 
         smooth_avg_update = 1.0 / args.smooth_avg_update
-        # fb = (args.fa - 1) * 4
         def enable_tensorQuantizer(m):
             if isinstance(m, TensorQuantizer):
                 m.smooth_avg = smooth_avg_update
-                # m.fab = (args.fa, fb)
-                m.fa_t = args.faa
-                if m.special == "weight":
-                    m.num_bits = args.quant_bits
+                if args.only_weight_quant:
+                    m.num_bits = 4.0 if m.special == "weight" else 8.0
                 else:
-                    m.num_bits = 8
+                    m.num_bits = 4.0
 
         if args.enable_quant:
             encoder.apply(enable_tensorQuantizer)
@@ -307,6 +291,18 @@ class LSTransformerModel(FairseqEncoderDecoderModel):
     def build_decoder(cls, args, tgt_dict, embed_tokens):
         return LSTransformerDecoder(args, tgt_dict, embed_tokens)
 
+    def forward(self, src_tokens, prev_output_tokens, features_only=False, **kwargs):
+        if self.args.enable_quant:
+            if self.params_clip is None:
+                self.params_clip, self.buffer = self.get_params()
+            self.sync_amax_and_pseudo_dist()
+
+        encoder_out = self.encoder(src_tokens)
+        decoder_out = self.decoder(
+            prev_output_tokens, encoder_out, features_only=features_only
+        )
+        return decoder_out
+
     def avg_clip_max(self, params):
         with torch.no_grad():
             for i, value in enumerate(params):
@@ -316,48 +312,24 @@ class LSTransformerModel(FairseqEncoderDecoderModel):
             dist.all_reduce(self.buffer)
             for i, value in enumerate(params):
                 value.data.copy_(self.buffer[i])
-            # total_gpus = float(dist.get_world_size())
-            # for value in self.params_clip:
-            #     value.data /= total_gpus
-            #     dist.all_reduce(value.data, op=dist.ReduceOp.SUM)
 
-    def forward(self, src_tokens, prev_output_tokens, features_only=False, **kwargs):
-        if self.params_clip is None:
-            self.params_clip, self.buffer = self.get_params()
-
+    def sync_amax_and_pseudo_dist(self):
         if self.training:
             if self.last_model is False:
                 rank = int(dist.get_rank())
                 if rank < self.args.n_gpus_intk:
-                    self.apply(enable_bits[self.args.n_gpus_intwhat])
+                    self.apply(enable_fp16)
             self.last_model = True
         else:
             if self.last_model is True:
-                self.apply(enable_int4)
                 logger.info("avg_clip_max")
+                
+                if self.args.only_weight_quant:
+                    self.apply(enable_int4_only_weight)
+                else:
+                    self.apply(enable_int4)
                 self.avg_clip_max(self.params_clip)
             self.last_model = False
-
-        encoder_out = self.encoder(src_tokens)
-        decoder_out = self.decoder(
-            prev_output_tokens, encoder_out, features_only=features_only
-        )
-        return decoder_out
-
-    # def set_params(self):
-    #     params = []
-    #     for n, v in self.named_parameters():
-    #         if n.endswith("clip_value_max") and "weight_quant" not in n:
-    #             v.data += (random.random() - 0.5) * 0.1
-    #             params.append([n, v])
-    #     return params
-
-    # def get_params(self):
-    #     params = []
-    #     for n, v in self.named_parameters():
-    #         if n.endswith("clip_value_max") and "weight_quant" not in n:
-    #             params.append([n, v])
-    #     return params 
 
     def get_params(self):
         params = []

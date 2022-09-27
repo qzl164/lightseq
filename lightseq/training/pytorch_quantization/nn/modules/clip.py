@@ -43,33 +43,14 @@ class Clip(nn.Module):
         self,
         clip_value_max,
         learn_max=False,
-        is_embed=False,
-        hz=None,
     ):
         super(Clip, self).__init__()
-        self.is_embed = is_embed
-        # if is_embed:
-        #     assert hz is not None
-        #     self.clip_value_maxs = Parameter(
-        #         torch.tensor([float(clip_value_max)] * hz),
-        #         requires_grad=False
-        #     )
-        # else:
-        #     self.clip_value_max = Parameter(
-        #         torch.tensor(clip_value_max),
-        #         requires_grad=False
-        #     )
         self.clip_value_max = Parameter(
             torch.tensor(clip_value_max),
-            requires_grad=False
+            requires_grad=learn_max
         )
 
     def forward(self, inputs):
-        # if self.is_embed:
-        #     clip_value_max = self.clip_value_maxs[None,None,:] if inputs.dim() == 3 else self.clip_value_maxs[None,:]
-        # else:
-        clip_value_max = self.clip_value_max
-        clip_value_min = -clip_value_max
-        outputs = torch.clamp(inputs, clip_value_min, clip_value_max)
-        # outputs = QF.clip(inputs, self.clip_value_min, self.clip_value_max)
+        clip_value_min = -self.clip_value_max
+        outputs = torch.clamp(inputs, clip_value_min, self.clip_value_max)
         return outputs

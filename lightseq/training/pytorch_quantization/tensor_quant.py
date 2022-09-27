@@ -347,15 +347,13 @@ class FakeTensorQuantFunction(Function):
         if unsigned:
             outputs += (2.0 ** (num_bits - 1)) - 1.0
         outputs = (outputs * scale).to(inputs.dtype)
-        if training:
-            amax.data = amax * (1 - smooth_avg) + smooth_avg * torch.max(inputs[0])
         return outputs
 
     @staticmethod
     def backward(ctx, grad_outputs):
         return grad_outputs, None, None, None, None, None, None
 
-import random
+
 class FakeTensorQuantFunctionX(Function):
     """Fake version of TensorQuantFunction
     See comments of TensorQuantFunction, arguments are the same.
@@ -371,16 +369,12 @@ class FakeTensorQuantFunctionX(Function):
         narrow_range=True, 
         training=False,
         smooth_avg=1,
-        fab=(1.3, 1.2),
-        is_weight=False,
         special=None,
     ):
-        # ctx.save_for_backward(inputs, amax)
-        # if is_embed:
-        #     _amax = amax[None,None,:] if inputs.dim() == 3 else amax[None,:]
-        # else:
-        #     _amax = amax
-        _amax = amax + torch.randn(1)[0] * 1e-4 if training else amax
+        _amax = amax
+        if training:
+            _amax = amax + torch.randn(1)[0] * 1e-4 if training else amax
+        print(num_bits, flush=True)
         outputs, scale = _tensor_quant(inputs, _amax, num_bits, unsigned, narrow_range)
         if unsigned:
             outputs += (2.0 ** (num_bits - 1)) - 1.0
@@ -395,13 +389,7 @@ class FakeTensorQuantFunctionX(Function):
 
     @staticmethod
     def backward(ctx, grad_outputs):
-        #         if ctx.can_scale:
-        #             a, b = ctx.fab
-        #             x = ctx.saved_tensors[0]
-        #             x = torch.clamp_max(x, 0.5)
-        #             scale = a - b * (0.5 - x)
-        #             grad_outputs = grad_outputs * scale
-        return grad_outputs, None, None, None, None, None, None, None, None, None
+        return grad_outputs, None, None, None, None, None, None, None
 
 
 def _tensor_quant(inputs, amax, num_bits=8, unsigned=False, narrow_range=True):

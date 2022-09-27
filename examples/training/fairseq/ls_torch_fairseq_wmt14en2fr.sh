@@ -24,8 +24,7 @@ lightseq-train /tmp/wmt14/ \
     --eval-bleu-print-samples \
     --best-checkpoint-metric bleu \
     --maximize-best-checkpoint-metric \
+    --save-interval-updates 6000 --keep-interval-updates 2 \
     --fp16 \
     --use-torch-layer \
-    --find-unused-parameters \
-    --keep-last-epochs 5 --save-interval-updates 6000 --keep-interval-updates 2
-
+    --keep-last-epochs 1
