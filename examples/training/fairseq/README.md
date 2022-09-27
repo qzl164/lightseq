@@ -1,5 +1,5 @@
 # LightSeq for Fairseq
-This repo contains examples for how to use LightSeq to accerate the training of translation task in [Fairseq](https://github.com/pytorch/fairseq).
+This repo contains examples for how to train a nearly lossless int4 Fully quantized transformer in [Fairseq](https://github.com/pytorch/fairseq).
 
 First you should install these requirements.
 ```shell
