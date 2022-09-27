@@ -1,7 +1,7 @@
 # LightSeq for Fairseq
 This repo contains examples for how to train a nearly lossless int4 fully quantized transformer in [Fairseq](https://github.com/pytorch/fairseq).
 
-First you should install these requirements.
+You should install these requirements.
 ```shell
 $ pip install fairseq sacremoses
 $ cd lightseq
