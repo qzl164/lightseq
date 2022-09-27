@@ -3,12 +3,7 @@ set -ex
 THIS_DIR=$(dirname $(readlink -f $0))
 cd $THIS_DIR/../../..
 
-if [ ! -d "/tmp/wmt14" ]; then
-    echo "Downloading dataset"
-    hdfs dfs -get hdfs://haruna/home/byte_arnold_lq_mlnlc/user/duanrenchong/datasets/en-fr/onefile_databin /tmp/wmt14
-fi
-
-lightseq-train /tmp/wmt14/ \
+lightseq-train /tmp/wmt14enfr/ \
     --arch ls_transformer --task translation \
     --save-dir int4_enfr \
     --finetune-from-model fp16_enfr/checkpoint_best.pt \
